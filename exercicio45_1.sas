@@ -1,0 +1,44 @@
+/*
+Exercício 45 - PROC ARIMA
+
+Criar uma tabela de pedidos particionada e ordenada pelo ultimo ano de informação.
+Criar um index na tabela particionada criada acima pelo campo cliente_id.
+Criar uma previsão de pedidos para os próximos 6 meses por cliente_id
+Salvar o resultado na libname formacao
+*/
+
+PROC SQL;
+  CREATE TABLE AUX_PEDIDOS_FORECAST AS
+  SELECT
+    CLIENTE_ID,
+    MDY(MONTH(DATA_PEDIDO), 1, YEAR(DATA_PEDIDO)) as DATA_FORECAST FORMAT=date9.,
+    COUNT(PEDIDO_ID) as TOTAL_PEDIDOS
+  FROM FORMACAO.PEDIDOS
+  WHERE YEAR(DATA_PEDIDO) = (SELECT MAX(YEAR(DATA_PEDIDO)) from FORMACAO.PEDIDOS)
+  GROUP BY CLIENTE_ID,CALCULATED DATA_FORECAST
+  ORDER BY CLIENTE_ID, CALCULATED DATA_FORECAST;
+QUIT;
+
+PROC SQL;
+
+  CREATE TABLE PEDIDOS_FORECAST AS
+  SELECT *
+    FROM AUX_PEDIDOS_FORECAST
+  GROUP BY CLIENTE_ID
+  HAVING COUNT(1)>3;
+
+QUIT;
+
+PROC DATASETS LIB=WORK;
+  MODIFY PEDIDOS_FORECAST;
+  INDEX CREATE CLIENTE_ID;
+QUIT;
+
+/*O PROC ARIMA precisa de pelo menos 6 observações por grupo (BY CLIENTE_ID) após diferenciações internas que o modelo pode aplicar.*/
+PROC ARIMA DATA=PEDIDOS_FORECAST;
+  BY CLIENTE_ID;
+  IDENTIFY VAR=TOTAL_PEDIDOS MINIC;
+  ESTIMATE;
+  FORECAST ID=DATA_FORECAST INTERVAL=MONTH LEAD=6 OUT=FORMACAO.PEDIDOS_FORECAST_ARIMA;
+RUN;
+QUIT;
